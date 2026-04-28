@@ -1,0 +1,22 @@
+# VyberSecurity project config
+# Docs: https://github.com/lightandlense/vybersecurity
+
+# Paths to exclude from scanning (relative to project root)
+exclude:
+  - ".venv"
+  - "node_modules"
+  - "dist"
+  - ".next"
+
+# Minimum severity to include in output (critical | high | warning | info)
+severity_threshold: info
+
+# Where to write reports (--audit mode)
+output_dir: ".security/reports"
+
+# Pattern modules to run
+enabled_modules:
+  - secrets
+  - auth
+  - config
+  - antigravity

@@ -25,44 +25,101 @@ def main(verbose: bool) -> None:
 
 @main.command()
 @click.argument("target", type=click.Path(exists=True))
-@click.option(
-    "--quick", "mode", flag_value="quick", default=True, help="Fast pattern scan only (default)"
-)
-@click.option("--full", "mode", flag_value="full", help="Pattern scan + semgrep")
-@click.option("--audit", "mode", flag_value="audit", help="Full scan + report")
+@click.option("--quick", "mode", flag_value="quick", default=True, help="Layer 1 pattern scan only (default)")
+@click.option("--full", "mode", flag_value="full", help="Layer 1 + semgrep subprocess")
+@click.option("--audit", "mode", flag_value="audit", help="Full scan + write reports to .security/reports/")
 @click.option(
     "--ai-triage", is_flag=True, default=False,
     help="Enable LLM triage layer (requires ANTHROPIC_API_KEY)",
 )
-@click.option("--output", "-o", type=click.Path(), default=None, help="Output report path (.md)")
-@click.option("--fail-on", default="critical", help="Exit non-zero if findings at this severity or above")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Output path for .md report")
+@click.option("--json", "output_json", is_flag=True, default=False, help="Also write JSON report")
+@click.option(
+    "--fail-on", default="critical",
+    type=click.Choice(["critical", "high", "warning", "info", "none"]),
+    help="Exit non-zero when findings at this severity or above exist",
+)
 def scan(
     target: str,
     mode: str,
     ai_triage: bool,
     output: str | None,
+    output_json: bool,
     fail_on: str,
 ) -> None:
     """Scan a project directory for security vulnerabilities."""
     from vybersecurity import reporter, scanner
+    from vybersecurity.config import load
 
-    result = scanner.scan(target)
+    cfg = load(target)
+    result = scanner.scan(target, cfg)
+
     reporter.print_console(result)
 
-    if output:
-        report_path = Path(output)
-        report_path.parent.mkdir(parents=True, exist_ok=True)
-        report_path.write_text(reporter.to_markdown(result), encoding="utf-8")
-        click.echo(f"[vyber-scan] Report written to {report_path}")
+    # Determine output dir
+    reports_dir = Path(target) / cfg.output_dir
 
-    severity_levels = {"critical": 0, "high": 1, "warning": 2, "info": 3}
-    threshold = severity_levels.get(fail_on, 0)
+    if mode == "audit":
+        # Auto-write both MD and JSON to .security/reports/
+        reports_dir.mkdir(parents=True, exist_ok=True)
+        md_path = reports_dir / "report.md"
+        json_path = reports_dir / "report.json"
+        md_path.write_text(reporter.to_markdown(result), encoding="utf-8")
+        json_path.write_text(reporter.to_json(result), encoding="utf-8")
+        click.echo(f"[vyber-scan] Reports written to {reports_dir}/")
+    else:
+        if output:
+            out = Path(output)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(reporter.to_markdown(result), encoding="utf-8")
+            click.echo(f"[vyber-scan] Markdown report: {out}")
+        if output_json:
+            json_out = Path(output).with_suffix(".json") if output else reports_dir / "report.json"
+            json_out.parent.mkdir(parents=True, exist_ok=True)
+            json_out.write_text(reporter.to_json(result), encoding="utf-8")
+            click.echo(f"[vyber-scan] JSON report: {json_out}")
+
+    if mode == "full":
+        _run_semgrep(target, reports_dir)
+
+    if ai_triage:
+        click.echo("[vyber-scan] AI triage (Phase 4) not yet implemented. Use --ai-triage after Phase 4.")
+
+    # Exit code based on --fail-on
+    if fail_on == "none":
+        return
+    severity_order = {"critical": 0, "high": 1, "warning": 2, "info": 3}
+    threshold = severity_order.get(fail_on, 0)
     worst = min(
-        (severity_levels.get(f.severity, 9) for f in result.findings),
+        (severity_order.get(f.severity, 9) for f in result.findings),
         default=9,
     )
     if worst <= threshold:
         sys.exit(1)
+
+
+def _run_semgrep(target: str, reports_dir: Path) -> None:
+    """Run semgrep as a subprocess (LGPL boundary: never import as library)."""
+    import shutil
+    import subprocess
+
+    if not shutil.which("semgrep"):
+        click.echo("[vyber-scan] semgrep not found - skipping Layer 2. Install with: pip install semgrep")
+        return
+
+    click.echo("[vyber-scan] Running semgrep (Layer 2)...")
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    semgrep_out = reports_dir / "semgrep.json"
+    result = subprocess.run(  # noqa: S603
+        ["semgrep", "--config", "auto", "--json", "-o", str(semgrep_out), target],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    if result.returncode not in (0, 1):
+        click.echo(f"[vyber-scan] semgrep exited with code {result.returncode}")
+    else:
+        click.echo(f"[vyber-scan] Semgrep results written to {semgrep_out}")
 
 
 if __name__ == "__main__":
