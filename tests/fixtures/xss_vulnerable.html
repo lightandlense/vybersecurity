@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head><title>Test App</title></head>
+<body>
+  <h1>Search</h1>
+  <form id="search-form" method="get" action="">
+    <input type="text" name="q" id="q" placeholder="Search...">
+    <button type="submit">Go</button>
+  </form>
+  <div id="results"></div>
+  <script>
+    // Intentionally vulnerable: reflects URL parameter without sanitization
+    const params = new URLSearchParams(window.location.search);
+    const q = params.get('q');
+    if (q) {
+      document.getElementById('results').innerHTML = 'Results for: ' + q;
+    }
+  </script>
+</body>
+</html>
