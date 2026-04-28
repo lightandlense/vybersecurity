@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import math
+import os
 import re
+from pathlib import Path
+from typing import Generator
 
 EXCLUDED_DIRS = {
     "node_modules", ".git", ".venv", "venv", "env",
@@ -11,10 +14,28 @@ EXCLUDED_DIRS = {
     "__pycache__", ".pytest_cache", ".ruff_cache",
 }
 
+# Lock files contain package hashes that trigger false positives
+EXCLUDED_FILENAMES = {
+    "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
+    "poetry.lock", "Pipfile.lock", "Gemfile.lock",
+    "composer.lock", "cargo.lock",
+}
+
 
 def is_excluded_path(path_str: str) -> bool:
-    parts = path_str.replace("\\", "/").split("/")
-    return any(part in EXCLUDED_DIRS for part in parts)
+    normalized = path_str.replace("\\", "/")
+    parts = normalized.split("/")
+    filename = parts[-1] if parts else ""
+    return any(part in EXCLUDED_DIRS for part in parts) or filename in EXCLUDED_FILENAMES
+
+
+def walk_files(root: str) -> Generator[Path, None, None]:
+    """Yield all files under root, pruning excluded directories at traversal time."""
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in EXCLUDED_DIRS]
+        for fname in filenames:
+            if fname not in EXCLUDED_FILENAMES:
+                yield Path(dirpath) / fname
 
 
 def should_ignore(line: str, rule_id: str) -> bool:

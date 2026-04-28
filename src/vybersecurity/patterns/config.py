@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..models import Finding
-from .common import is_excluded_path
+from .common import is_excluded_path, walk_files
 
 # .env variants that should always be in .gitignore
 SENSITIVE_ENV_PATTERNS = [
@@ -38,9 +38,7 @@ def check_gitignore_coverage(directory: str) -> list[Finding]:
             if pat.strip() and not pat.strip().startswith("#")
         )
 
-    for p in root.rglob("*"):
-        if not p.is_file() or is_excluded_path(str(p)):
-            continue
+    for p in walk_files(str(root)):
         name = p.name.lower()
         if name.startswith(".env") and name != ".env.example" and name != ".env.sample":
             if not is_ignored(p.name) and not is_ignored(name):
@@ -81,7 +79,7 @@ def check_missing_gitignore(directory: str) -> list[Finding]:
             continue
         name = subdir.name.lower()
         if any(kw in name for kw in ["backend", "server", "api", "service", "worker"]):
-            sub_has_source = any(p.suffix in SOURCE_EXTENSIONS for p in subdir.rglob("*") if p.is_file())
+            sub_has_source = any(p.suffix in SOURCE_EXTENSIONS for p in walk_files(str(subdir)))
             sub_has_gitignore = (subdir / ".gitignore").exists() or has_gitignore
             if sub_has_source and not sub_has_gitignore:
                 findings.append(Finding(
@@ -109,9 +107,7 @@ def check_api_key_reuse(directory: str) -> list[Finding]:
         r"(?:sk-[a-zA-Z0-9]{20,}|sk-ant-[a-zA-Z0-9_-]{20,}|AIza[0-9A-Za-z\-_]{20,}|ghp_[a-zA-Z0-9]{20,})"
     )
 
-    for p in root.rglob("*"):
-        if not p.is_file() or is_excluded_path(str(p)):
-            continue
+    for p in walk_files(str(root)):
         name = p.name.lower()
         if not name.startswith(".env"):
             continue

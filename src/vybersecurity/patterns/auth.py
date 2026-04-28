@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
 from ..models import Finding
-from .common import is_excluded_path, is_false_positive_line, should_ignore
+from .common import is_false_positive_line, should_ignore, walk_files
 
 SCAN_EXTENSIONS = {".py", ".js", ".ts", ".tsx", ".jsx", ".env"}
 
@@ -73,9 +72,7 @@ def scan_file(filepath: str) -> list[Finding]:
 
 def scan_directory(path: str) -> list[Finding]:
     findings: list[Finding] = []
-    for p in Path(path).rglob("*"):
-        if not p.is_file() or is_excluded_path(str(p)):
-            continue
+    for p in walk_files(path):
         if p.suffix in SCAN_EXTENSIONS or p.name.lower().startswith(".env"):
             findings.extend(scan_file(str(p)))
     return findings

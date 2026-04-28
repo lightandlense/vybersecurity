@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 
 from .config import VyberConfig, load
 from .models import ScanResult
 from .patterns import antigravity, auth, config, secrets
+from .patterns.common import EXCLUDED_DIRS
 
 log = logging.getLogger(__name__)
 
@@ -23,6 +25,15 @@ def _apply_threshold(result: ScanResult, threshold: str) -> ScanResult:
     return result
 
 
+def _count_files(root: Path) -> int:
+    """Count scannable files, skipping excluded directories."""
+    count = 0
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in EXCLUDED_DIRS]
+        count += len(filenames)
+    return count
+
+
 def scan(target: str, vyber_config: VyberConfig | None = None) -> ScanResult:
     """Run all enabled Layer 1 pattern checks against the target directory."""
     root = Path(target).resolve()
@@ -32,7 +43,7 @@ def scan(target: str, vyber_config: VyberConfig | None = None) -> ScanResult:
     cfg = vyber_config or load(str(root))
     result = ScanResult(target=str(root))
 
-    result.files_scanned = sum(1 for p in root.rglob("*") if p.is_file())
+    result.files_scanned = _count_files(root)
     log.info("Scanning %s (%d files)", root, result.files_scanned)
 
     modules = cfg.enabled_modules

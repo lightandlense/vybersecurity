@@ -1,0 +1,40 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  scan:
+    name: VyberSecurity
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install VyberSecurity
+        run: pip install -e ".[dev]"
+
+      - name: Layer 1 + semgrep scan
+        run: |
+          pip install semgrep
+          vyber-scan . --full --fail-on critical
+
+      - name: Write audit report
+        if: always()
+        run: vyber-scan . --audit --fail-on none
+
+      - name: Upload security report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-report
+          path: .security/reports/
+          if-no-files-found: ignore

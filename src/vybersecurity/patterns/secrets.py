@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
 from ..models import Finding
-from .common import entropy, is_excluded_path, is_false_positive_line, should_ignore
+from .common import entropy, is_false_positive_line, should_ignore, walk_files
 
 SCAN_EXTENSIONS = {".py", ".js", ".ts", ".tsx", ".jsx", ".env", ".yml", ".yaml", ".json", ".sh"}
 
@@ -125,13 +124,10 @@ def scan_env_file(filepath: str) -> list[Finding]:
 
 def scan_directory(path: str) -> list[Finding]:
     findings: list[Finding] = []
-    for p in Path(path).rglob("*"):
-        if not p.is_file() or is_excluded_path(str(p)):
-            continue
+    for p in walk_files(path):
         name = p.name.lower()
         if p.suffix in SCAN_EXTENSIONS:
             findings.extend(scan_file(str(p)))
-        # .env files (e.g. .env, .env.local, .env.vercel) - no extension in suffix
         if name.startswith(".env"):
             findings.extend(scan_env_file(str(p)))
     return findings
