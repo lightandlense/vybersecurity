@@ -54,6 +54,21 @@ def scan(
     cfg = load(target)
     result = scanner.scan(target, cfg)
 
+    # Run LLM triage before reporting so written reports reflect triaged findings
+    if ai_triage:
+        from vybersecurity.triage import triage_findings
+        try:
+            triage = triage_findings(result)
+        except EnvironmentError as exc:
+            click.echo(f"[vyber-scan] {exc}", err=True)
+            sys.exit(2)
+        result.findings = triage.confirmed + triage.uncertain
+        dismissed = len(triage.dismissed)
+        click.echo(
+            f"[vyber-scan] AI triage: {len(triage.confirmed)} confirmed, "
+            f"{dismissed} dismissed, {len(triage.uncertain)} uncertain"
+        )
+
     reporter.print_console(result)
 
     # Determine output dir
@@ -81,9 +96,6 @@ def scan(
 
     if mode == "full":
         _run_semgrep(target, reports_dir)
-
-    if ai_triage:
-        click.echo("[vyber-scan] AI triage (Phase 4) not yet implemented. Use --ai-triage after Phase 4.")
 
     # Exit code based on --fail-on
     if fail_on == "none":
